@@ -50,6 +50,13 @@ python3 NetworkTool.py Recon --target 192.168.1.1 --output results.json --mode n
 
 ### Generic Scan
 This scan allows users to select from a set of predefined Nmap scan options like TCP connect scan, SYN scan, UDP scan, and more.
+1. **TCP Connect Scan**: Perform a TCP connect scan.
+2. **SYN Scan**: "Perform a SYN scan.
+3. **UDP Scan**": "Perform a UDP scan.
+4. **Service Version Detection**: "Detect service versions.
+5. **OS Detection**: "Enable OS detection."},
+6. **Aggressive Scan**: "Enable OS detection, version detection, script scanning, and traceroute.
+7. **Ping Scan**: "Discover online hosts without scanning ports.
 
 #### Parameters for Generic Scan:
 - `--target`: Specify the target IP or domain (required).
@@ -65,6 +72,14 @@ python3 NetworkTool.py Generic --target 192.168.1.0/24 --ports 80,443 --output r
 
 ### SegmentationCheck Scan
 This scan is focused on testing the security and segmentation of networks using various techniques like TCP ACK Scan, Fragmentation Scan, and more.
+1. **TCP ACK Scan**: "Bypass stateful firewalls by sending TCP ACK packets.
+2. **Fragmentation Scan**: "Evade security devices by sending fragmented packets.
+3. **Idle Scan**: "Perform a stealthy scan using a zombie host.
+4. **TTL-based Scan**: "Manipulate TTL to evade inspection by security devices.
+5. **Reverse Path Filtering Scan**: "Use malformed packets to detect weaknesses in firewall configuration.
+6. **TCP SYN/FIN Scan", "option**: "Send TCP FIN packets to bypass SYN-blocking firewalls.
+7. **IP Protocol Scan**: "Test different IP protocols to identify less inspected paths.
+8. **Timing Manipulation Scan**: "Slow scan to bypass IDS/IPS by reducing traffic bursts.
 
 #### Parameters for SegmentationCheck Scan:
 - `--target`: Specify the target IP or domain (required).
