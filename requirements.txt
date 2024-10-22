@@ -1,0 +1,8 @@
+colorama==0.4.6
+greenlet==3.1.1
+netifaces==0.11.0
+python-libnmap==0.7.3
+riposte==0.5.1
+SQLAlchemy==2.0.36
+tabulate==0.9.0
+typing_extensions==4.12.2
