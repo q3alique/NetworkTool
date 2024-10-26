@@ -86,10 +86,14 @@ class SqlHandler:
         source_ip = Column("source_ip", Text())
         status = Column("status", Text())
         percentage = Column("percentage", Integer)
-        sourcenetworks: Mapped[List["SourceNetwork"]] = relationship(secondary=scans_sourcenetworks_table)
-        targets: Mapped[List["Target"]] = relationship(secondary=scans_targets_table)
-        rules: Mapped[List["Rule"]] = relationship(secondary=scans_rules_table)
-        reports: Mapped[List["Report"]] = relationship(secondary=scans_reports_table)
+        sourcenetworks: Mapped[List["SourceNetwork"]] = relationship(
+            secondary=scans_sourcenetworks_table, back_populates="scans")
+        targets: Mapped[List["Target"]] = relationship(
+            secondary=scans_targets_table, back_populates="scans")
+        rules: Mapped[List["Rule"]] = relationship(
+            secondary=scans_rules_table, back_populates="scans")
+        reports: Mapped[List["Report"]] = relationship(
+            secondary=scans_reports_table, back_populates="scans")
 
         def __init__(self, name, nmap_target, nmap_flags, scan_type, source_ip):
             self.name = name
@@ -110,6 +114,8 @@ class SqlHandler:
         inserted = Column("inserted", DateTime(), server_default=func.now())
         name = Column("name", Text())
         ip_range = Column("ip_range", Text())
+        scans: Mapped[List["Scan"]] = relationship(
+            secondary=scans_sourcenetworks_table, back_populates="sourcenetworks")
 
         def __init__(self, name, ip_range):
             self.name = name
@@ -127,6 +133,8 @@ class SqlHandler:
         name = Column("name", Text())
         ip_range = Column("ip_range", Text())
         ports = Column("ports", Text())
+        scans: Mapped[List["Scan"]] = relationship(
+            secondary=scans_targets_table, back_populates="targets")
 
         def __init__(self, name, ip_range, ports):
             self.name = name
@@ -153,6 +161,8 @@ class SqlHandler:
         dst_ports = Column("dst_ports", Text())
         action = Column("action", Text())
         info = Column("info", Text())
+        scans: Mapped[List["Scan"]] = relationship(
+            secondary=scans_rules_table, back_populates="rules")
 
         def __init__(self, obj):
             self.id = obj.id
@@ -179,6 +189,8 @@ class SqlHandler:
         id = Column("id", Integer, primary_key=True)
         inserted = Column("inserted", DateTime(), server_default=func.now())
         report_json = Column("report_json", Text())
+        scans: Mapped[List["Scan"]] = relationship(
+            secondary=scans_reports_table, back_populates="reports")
 
         def __init__(self, obj):
             dumped_json = json.dumps(obj, cls=ReportEncoder)
