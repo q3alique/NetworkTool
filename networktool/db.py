@@ -111,9 +111,9 @@ class SqlHandler:
         name = Column("name", Text())
         ip_range = Column("ip_range", Text())
 
-        def __init__(self, obj):
-            self.name = obj.name
-            self.ip_range = obj.ip_range
+        def __init__(self, name, ip_range):
+            self.name = name
+            self.ip_range = ip_range
     
     class Target(Base):
         """

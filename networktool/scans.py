@@ -287,7 +287,7 @@ def rm_scan(scanid):
     with db.sqlhandler.Session() as sess:
         scan = sess.query(db.SqlHandler.Scan).get(scanid)
         if not scan:
-            cli.print_error(f"No Scan with this identifier. Status: {scan.status}")
+            cli.print_error(f"No Scan with this identifier.")
             return
 
         _tabulate_scans([scan])
@@ -311,7 +311,6 @@ def rm_scan(scanid):
         cli.print_success(f"Scan successfully removed from DB. [ID: {scanid}]")
 
 def list_scans(filter=None):
-    scans = []
     with db.sqlhandler.Session() as sess:
         scans = sess.query(db.SqlHandler.Scan).order_by(db.SqlHandler.Scan.inserted)
     
@@ -320,7 +319,7 @@ def list_scans(filter=None):
         elif filter == "done":
             scans = scans.filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_DONE)
 
-    _tabulate_scans(scans)
+        _tabulate_scans(scans)
 
 def _tabulate_scans(scans):
     headers = ["ID", "Type", "Name", "Source", "Target", "Flags", "Status", "Percent."]
