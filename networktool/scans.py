@@ -5,6 +5,7 @@ import netifaces
 from libnmap.process import NmapProcess
 from libnmap.parser import NmapParser, NmapParserException
 from tabulate import tabulate
+from sqlalchemy.sql import and_
 
 from colorama import init, Fore, Style
 
@@ -229,15 +230,55 @@ def kill_scan(scanid):
         if not scan:
             cli.print_error(f"No Scan with this identifier. Status: {scan.status}")
             return
-        scan_type = scan.scan_type
-        if scan_type != db.SqlHandler.Scan.STATUS_RUNNING:
+        scan_status = scan.status
+        if scan_status != db.SqlHandler.Scan.STATUS_RUNNING:
             cli.print_error(f"Scan is not running. Status: {scan.status}")
+            return
+
+        _tabulate_scans([scan])
+        
+        choice = input(f"\n{Fore.YELLOW}Are you sure you want to kill this scan? [N/y]{Style.RESET_ALL}")
+        if choice != "y":
+            return
     
     for nmap_proc in nmapproc_scanid:
         if nmapproc_scanid[nmap_proc] == scanid:
-            cli.print_error(f"Requesting Scan stop... [ID: {scanid}]")
+            cli.print(f"Requesting Scan stop... [ID: {scanid}]")
             nmap_proc.stop()
+            return
     
+    cli.print_warn(f"A scan with \"Running\" was found with this identifier, but no associated nmap process is running.")
+    cli.print_warn(f"This may be due to a crash that left an inconsistent status in DB. Consider removing this entry (scans rm <ID>)")
+
+def kill_all_scans():
+    if len(nmapproc_scanid) > 0:
+        choice = input(f"\n{Fore.YELLOW}There are ongoing nmap processes running. Are you sure you want to exit? [N/y]{Style.RESET_ALL} ")
+        if choice != "y":
+            return False
+
+    for nmap_proc in nmapproc_scanid:
+        cli.print(f"Requesting Scan stop... [ID: {nmapproc_scanid[nmap_proc]}]")
+        nmap_proc.stop()
+    
+    return True
+
+def clean_scans():
+    choice = input(f"\n{Fore.YELLOW}This will delete every scan with status other than Done or Running. Are you sure? [N/y]{Style.RESET_ALL} ")
+    if choice != "y":
+        return False
+
+    with db.sqlhandler.Session() as sess:
+        deleted = sess.query(db.SqlHandler.Scan).filter(and_(db.SqlHandler.Scan.status != db.SqlHandler.Scan.STATUS_DONE, db.SqlHandler.Scan.status != db.SqlHandler.Scan.STATUS_RUNNING)).delete()
+        cli.print_warn(f"[i] {deleted} scans have been deleted.")
+        sess.commit()
+
+def clean_running_scans():
+    with db.sqlhandler.Session() as sess:
+        deleted = sess.query(db.SqlHandler.Scan).filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_RUNNING).delete()
+        if deleted > 0:
+            cli.print_warn(f"[i] {deleted} scans with Running status have been deleted (these probably belonged to previous runs of the tool that did not finalize correctly).")
+        sess.commit()
+
 def rm_scan(scanid):
     if not scanid:
         print(f"{Fore.RED}Error: Scan ID is required.{Style.RESET_ALL}")
@@ -248,25 +289,49 @@ def rm_scan(scanid):
         if not scan:
             cli.print_error(f"No Scan with this identifier. Status: {scan.status}")
             return
+
+        _tabulate_scans([scan])
+
+        if scan.status == db.SqlHandler.Scan.STATUS_RUNNING:
+            cli.print_error(f"[!] Running scans cannot be removed. Please kill the scan first.")
+            return
+
+        if len(scan.reports) > 0:
+            cli.print_warn("[i] This scan has an associated report.")
+
+        cli.print_warn("Are you sure you want to remove this scan (and associated reports)? [N/y] ")
+        choice = input()
+        if choice != "y":
+            return
     
-        #TODO: implement confirmation message, printing the details of the Scan and specifying if a report is available
+        for report in scan.reports:
+            sess.delete(report)        
         sess.delete(scan)
         sess.commit()
         cli.print_success(f"Scan successfully removed from DB. [ID: {scanid}]")
 
 def list_scans(filter=None):
-    scans = None
+    scans = []
     with db.sqlhandler.Session() as sess:
         scans = sess.query(db.SqlHandler.Scan).order_by(db.SqlHandler.Scan.inserted)
     
-    if filter == "running":
-        scans = scans.filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_RUNNING)
-    elif filter == "done":
-        scans = scans.filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_DONE)
+        if filter == "running":
+            scans = scans.filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_RUNNING)
+        elif filter == "done":
+            scans = scans.filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_DONE)
 
+    _tabulate_scans(scans)
+
+def _tabulate_scans(scans):
     headers = ["ID", "Type", "Name", "Source", "Target", "Flags", "Status", "Percent."]
-    data = [ [scan.id, scan.scan_type, scan.name, scan.source_ip, scan.nmap_target, scan.nmap_flags, scan.status, scan.percentage] for scan in scans ]
-
+    data = []
+    for scan in scans:
+        status = scan.status
+        if status == db.SqlHandler.Scan.STATUS_DONE:
+            status = f"{Fore.GREEN}{status}{Style.RESET_ALL}"
+        elif status == db.SqlHandler.Scan.STATUS_FAILED:
+            status = f"{Fore.RED}{status}{Style.RESET_ALL}"
+        data.append([scan.id, scan.scan_type, scan.name, scan.source_ip, scan.nmap_target, scan.nmap_flags, status, scan.percentage])
     cli.repl.print(tabulate(data, headers=headers, tablefmt='grid'))
 
 def print_scan(scanid):

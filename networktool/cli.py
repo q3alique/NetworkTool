@@ -9,7 +9,7 @@ import scans
 
 COMMANDS = ["scans"]
 
-SCANS_SUBCOMMANDS = ["new", "list", "show", "export", "kill", "rm"]
+SCANS_SUBCOMMANDS = ["new", "list", "show", "export", "kill", "rm", "clean"]
 SCANS_NEW_SUBCOMMANDS = ["recon", "serviceid", "segmentation-check", "generic", "custom-nmap"]
 
 global repl
@@ -18,8 +18,9 @@ repl = Riposte(prompt="[network-tool] ")
 
 @repl.command("exit")
 def exit():
-    #TODO: Kill every running scan before exiting
-    sys.exit(0)
+    exit = scans.kill_all_scans()
+    if exit:
+        sys.exit(0)
 
 @repl.command("help")
 def help():
@@ -90,6 +91,8 @@ def scans_command(str1: str, str2: str = None, str3 = None, str4 = None):
         else:
             repl.error("Please provide a valid identifier.")
             repl.info(help_str)
+    elif str1 == "clean":
+        scans.clean_scans()
     elif str1 == "export":
         if str2:
             scanid = None
@@ -123,8 +126,14 @@ def start_completer(text, line, start_index, end_index):
         if subcommand.startswith(text)
     ]
 
+def print(msg):
+    repl.print(msg)
+
 def print_success(msg):
     repl.print(Palette.GREEN.format(msg))
 
 def print_error(msg):
     repl.print(Palette.RED.format(msg))
+
+def print_warn(msg):
+    repl.print(Palette.YELLOW.format(msg))
