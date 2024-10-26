@@ -128,10 +128,10 @@ class SqlHandler:
         ip_range = Column("ip_range", Text())
         ports = Column("ports", Text())
 
-        def __init__(self, obj):
-            self.name = obj.name
-            self.ip_range = obj.ip_range
-            self.ports = obj.ports
+        def __init__(self, name, ip_range, ports):
+            self.name = name
+            self.ip_range = ip_range
+            self.ports = ports
     
     class Rule(Base):
         """

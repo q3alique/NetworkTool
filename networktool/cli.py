@@ -5,14 +5,15 @@ import sys
 from riposte import Riposte
 from riposte.printer import Palette
 
-import scans, sourcenetworks
+import scans, sourcenetworks, targets
 
-COMMANDS = ["scans", "sourcenetworks"]
+COMMANDS = ["scans", "sourcenetworks", "targets"]
 
 SCANS_SUBCOMMANDS = ["new", "list", "show", "export", "kill", "rm", "clean"]
 SCANS_NEW_SUBCOMMANDS = ["recon", "serviceid", "segmentation-check", "generic", "custom-nmap"]
 
 SOURCENETWORKS_SUBCOMMANDS = ["add", "rm", "list"]
+TARGETS_SUBCOMMANDS = ["add", "rm", "list"]
 
 global repl
 
@@ -129,7 +130,7 @@ def start_completer(text, line, start_index, end_index):
     ]
 
 @repl.command("sourcenetworks", description="Manage SourceNetworks.")
-def sourcenetworks_command(str1: str, str2: str = None, str3 = None, str4 = None):
+def sourcenetworks_command(str1: str, str2: str = None, str3 = None):
     help_str = f"Usage: sourcenetworks {"/".join(SOURCENETWORKS_SUBCOMMANDS)}. Execute 'help <command> <subcommand>' for additional details."
     help_add_str = f"Usage: sourcenetworks add <IP_RANGE> \"<NAME>\""
 
@@ -154,6 +155,49 @@ def sourcenetworks_command(str1: str, str2: str = None, str3 = None, str4 = None
     else:
         repl.error("Unknown sourcenetworks option.")
         repl.info(help_str)
+
+@repl.complete("sourcenetworks")
+def start_completer(text, line, start_index, end_index):
+    return [
+        subcommand
+        for subcommand in SOURCENETWORKS_SUBCOMMANDS
+        if subcommand.startswith(text)
+    ]
+
+@repl.command("targets", description="Manage Targets.")
+def targets_command(str1: str, str2: str = None, str3 = None, str4 = None):
+    help_str = f"Usage: targets {"/".join(TARGETS_SUBCOMMANDS)}. Execute 'help <command> <subcommand>' for additional details."
+    help_add_str = f"Usage: targets add <IP_RANGE> <PORTS_CSV> \"<NAME>\""
+
+    if str1 == "add":
+        if str2 and str3 and str4:
+            targets.add_target(ip_range=str2, ports=str3, name=str4)
+        else:
+            repl.info(help_add_str)
+    elif str1 == "rm":
+        if str2:
+            targetid = None
+            try:
+                targetid = int(str2)
+            except ValueError:
+                print("Please provide a valid identifier.")
+            targets.rm_target(targetid)
+        else:
+            repl.error("Please provide a valid identifier.")
+            repl.info(help_str)
+    elif str1 == "list":
+        targets.list_targets()
+    else:
+        repl.error("Unknown targets option.")
+        repl.info(help_str)
+
+@repl.complete("targets")
+def start_completer(text, line, start_index, end_index):
+    return [
+        subcommand
+        for subcommand in TARGETS_SUBCOMMANDS
+        if subcommand.startswith(text)
+    ]
 
 def print(msg):
     repl.print(msg)
