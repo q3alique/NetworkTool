@@ -12,11 +12,12 @@ from sqlalchemy import Column
 from sqlalchemy import Table
 from sqlalchemy import ForeignKey
 from sqlalchemy import create_engine
-from sqlalchemy.types import DateTime, Integer, Text
+from sqlalchemy.types import DateTime, Integer, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import func
+from sqlalchemy.sql import expression
 
 
 from libnmap.plugins.backendplugin import NmapBackendPlugin
@@ -86,18 +87,26 @@ class SqlHandler:
         source_ip = Column("source_ip", Text())
         status = Column("status", Text())
         percentage = Column("percentage", Integer)
-        sourcenetworks: Mapped[List["SourceNetwork"]] = relationship(secondary=scans_sourcenetworks_table)
-        targets: Mapped[List["Target"]] = relationship(secondary=scans_targets_table)
-        rules: Mapped[List["Rule"]] = relationship(secondary=scans_rules_table)
-        reports: Mapped[List["Report"]] = relationship(secondary=scans_reports_table)
+        sourcenetworks: Mapped[List["SourceNetwork"]] = relationship(
+            secondary=scans_sourcenetworks_table, back_populates="scans")
+        targets: Mapped[List["Target"]] = relationship(
+            secondary=scans_targets_table, back_populates="scans")
+        rules: Mapped[List["Rule"]] = relationship(
+            secondary=scans_rules_table, back_populates="scans")
+        reports: Mapped[List["Report"]] = relationship(
+            secondary=scans_reports_table, back_populates="scans")
 
-        def __init__(self, name, nmap_target, nmap_flags, scan_type, source_ip):
+        def __init__(self, name, nmap_target, nmap_flags, scan_type, source_ip,
+                      sourcenetworks=[], targets=[], rules=[]):
             self.name = name
             self.nmap_target = nmap_target
             self.nmap_flags = nmap_flags
             self.scan_type = scan_type
             self.source_ip = source_ip
             self.status = self.STATUS_READY
+            self.sourcenetworks = sourcenetworks
+            self.targets = targets
+            self.rules = rules
     
     class SourceNetwork(Base):
         """
@@ -110,10 +119,12 @@ class SqlHandler:
         inserted = Column("inserted", DateTime(), server_default=func.now())
         name = Column("name", Text())
         ip_range = Column("ip_range", Text())
+        scans: Mapped[List["Scan"]] = relationship(
+            secondary=scans_sourcenetworks_table, back_populates="sourcenetworks")
 
-        def __init__(self, obj):
-            self.name = obj.name
-            self.ip_range = obj.ip_range
+        def __init__(self, name, ip_range):
+            self.name = name
+            self.ip_range = ip_range
     
     class Target(Base):
         """
@@ -127,11 +138,13 @@ class SqlHandler:
         name = Column("name", Text())
         ip_range = Column("ip_range", Text())
         ports = Column("ports", Text())
+        scans: Mapped[List["Scan"]] = relationship(
+            secondary=scans_targets_table, back_populates="targets")
 
-        def __init__(self, obj):
-            self.name = obj.name
-            self.ip_range = obj.ip_range
-            self.ports = obj.ports
+        def __init__(self, name, ip_range, ports):
+            self.name = name
+            self.ip_range = ip_range
+            self.ports = ports
     
     class Rule(Base):
         """
@@ -144,29 +157,44 @@ class SqlHandler:
         inserted = Column("inserted", DateTime(), server_default=func.now())
         name = Column("name", Text())
         src_zone = Column("src_zone", Text())
-        src_addr_text = Column("src_addr_text", Text())
         src_addr = Column("src_addr", Text())
+        src_addr_text = Column("src_addr_text", Text())
+        src_addr_ips = Column("src_addr_ips", Text())
         dst_zone = Column("dst_zone", Text())
-        dst_addr_text = Column("dst_addr_text", Text())
         dst_addr = Column("dst_addr", Text())
-        dst_ports_text = Column("dst_ports_text", Text())
-        dst_ports = Column("dst_ports", Text())
+        dst_addr_text = Column("dst_addr_text", Text())
+        dst_addr_ips = Column("dst_addr_ips", Text())
+        application = Column("application", Text())
+        service = Column("service", Text())
+        service_text = Column("service_text", Text())
+        service_ports = Column("service_ports", Text())
         action = Column("action", Text())
         info = Column("info", Text())
+        hidden = Column("hidden", Boolean(), server_default=expression.false())
+        scans: Mapped[List["Scan"]] = relationship(
+            secondary=scans_rules_table, back_populates="rules")
 
-        def __init__(self, obj):
-            self.id = obj.id
-            self.name = obj.name
-            self.src_zone = obj.src_zone
-            self.src_addr_text = obj.src_addr_text
-            self.src_addr = obj.src_addr
-            self.dst_zone = obj.dst_zone
-            self.dst_addr_text = obj.dst_addr_text
-            self.dst_addr = obj.dst_addr
-            self.dst_ports_text = obj.dst_ports_text
-            self.dst_ports = obj.dst_ports
-            self.action = obj.action
-            self.info = obj.info    
+        def __init__(self, id, name,
+                     src_zone, src_addr, src_addr_text, src_addr_ips,
+                      dst_zone, dst_addr, dst_addr_text, dst_addr_ips,
+                       application, service, service_text, service_ports,
+                         action, info=None):
+            self.id = id
+            self.name = name
+            self.src_zone = src_zone
+            self.src_addr = src_addr
+            self.src_addr_text = src_addr_text
+            self.src_addr_ips = src_addr_ips
+            self.dst_zone = dst_zone
+            self.dst_addr = dst_addr
+            self.dst_addr_text = dst_addr_text
+            self.dst_addr_ips = dst_addr_ips
+            self.application = application
+            self.service = service
+            self.service_text = service_text
+            self.service_ports = service_ports
+            self.action = action
+            self.info = info    
         
     
     class Report(Base):
@@ -179,6 +207,8 @@ class SqlHandler:
         id = Column("id", Integer, primary_key=True)
         inserted = Column("inserted", DateTime(), server_default=func.now())
         report_json = Column("report_json", Text())
+        scans: Mapped[List["Scan"]] = relationship(
+            secondary=scans_reports_table, back_populates="reports")
 
         def __init__(self, obj):
             dumped_json = json.dumps(obj, cls=ReportEncoder)
@@ -243,14 +273,3 @@ class SqlHandler:
             raise ValueError
         sess = self.Session()
         return sess.query(obj_type).order_by(orderby)
-
-    def delete(self, obj_type, obj_id=None):
-        if obj_type is None or obj_id is None:
-            raise ValueError
-        nb_line = 0
-        sess = self.Session()
-        rpt = sess.query(obj_type).filter_by(id=obj_id)
-        nb_line = rpt.delete()
-        sess.commit()
-        sess.close()
-        return nb_line
