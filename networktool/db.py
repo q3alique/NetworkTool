@@ -12,11 +12,12 @@ from sqlalchemy import Column
 from sqlalchemy import Table
 from sqlalchemy import ForeignKey
 from sqlalchemy import create_engine
-from sqlalchemy.types import DateTime, Integer, Text
+from sqlalchemy.types import DateTime, Integer, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import func
+from sqlalchemy.sql import expression
 
 
 from libnmap.plugins.backendplugin import NmapBackendPlugin
@@ -152,31 +153,44 @@ class SqlHandler:
         inserted = Column("inserted", DateTime(), server_default=func.now())
         name = Column("name", Text())
         src_zone = Column("src_zone", Text())
-        src_addr_text = Column("src_addr_text", Text())
         src_addr = Column("src_addr", Text())
+        src_addr_text = Column("src_addr_text", Text())
+        src_addr_ips = Column("src_addr_ips", Text())
         dst_zone = Column("dst_zone", Text())
-        dst_addr_text = Column("dst_addr_text", Text())
         dst_addr = Column("dst_addr", Text())
-        dst_ports_text = Column("dst_ports_text", Text())
-        dst_ports = Column("dst_ports", Text())
+        dst_addr_text = Column("dst_addr_text", Text())
+        dst_addr_ips = Column("dst_addr_ips", Text())
+        application = Column("application", Text())
+        service = Column("service", Text())
+        service_text = Column("service_text", Text())
+        service_ports = Column("service_ports", Text())
         action = Column("action", Text())
         info = Column("info", Text())
+        hidden = Column("hidden", Boolean(), server_default=expression.false())
         scans: Mapped[List["Scan"]] = relationship(
             secondary=scans_rules_table, back_populates="rules")
 
-        def __init__(self, obj):
-            self.id = obj.id
-            self.name = obj.name
-            self.src_zone = obj.src_zone
-            self.src_addr_text = obj.src_addr_text
-            self.src_addr = obj.src_addr
-            self.dst_zone = obj.dst_zone
-            self.dst_addr_text = obj.dst_addr_text
-            self.dst_addr = obj.dst_addr
-            self.dst_ports_text = obj.dst_ports_text
-            self.dst_ports = obj.dst_ports
-            self.action = obj.action
-            self.info = obj.info    
+        def __init__(self, id, name,
+                     src_zone, src_addr, src_addr_text, src_addr_ips,
+                      dst_zone, dst_addr, dst_addr_text, dst_addr_ips,
+                       application, service, service_text, service_ports,
+                         action, info=None):
+            self.id = id
+            self.name = name
+            self.src_zone = src_zone
+            self.src_addr = src_addr
+            self.src_addr_text = src_addr_text
+            self.src_addr_ips = src_addr_ips
+            self.dst_zone = dst_zone
+            self.dst_addr = dst_addr
+            self.dst_addr_text = dst_addr_text
+            self.dst_addr_ips = dst_addr_ips
+            self.application = application
+            self.service = service
+            self.service_text = service_text
+            self.service_ports = service_ports
+            self.action = action
+            self.info = info    
         
     
     class Report(Base):

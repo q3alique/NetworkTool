@@ -5,7 +5,7 @@ import sys
 from riposte import Riposte
 from riposte.printer import Palette
 
-import scans, sourcenetworks, targets
+import scans, sourcenetworks, targets, rules
 
 COMMANDS = ["scans", "sourcenetworks", "targets"]
 
@@ -14,6 +14,9 @@ SCANS_NEW_SUBCOMMANDS = ["recon", "serviceid", "segmentation-check", "generic", 
 
 SOURCENETWORKS_SUBCOMMANDS = ["add", "rm", "list"]
 TARGETS_SUBCOMMANDS = ["add", "rm", "list"]
+
+RULES_SUBCOMMANDS = ["rm", "list", "hide", "unhide"]
+RULES_LIST_SUBCOMMANDS = ["hidden", "all"]
 
 global repl
 
@@ -196,6 +199,77 @@ def start_completer(text, line, start_index, end_index):
     return [
         subcommand
         for subcommand in TARGETS_SUBCOMMANDS
+        if subcommand.startswith(text)
+    ]
+
+@repl.command("rules", description="Manage Rules.")
+def rules_command(str1: str, str2: str = None, str3 = None, str4 = None):
+    help_str = f"Usage: rules {"/".join(RULES_SUBCOMMANDS)}. Execute 'help <command> <subcommand>' for additional details."
+
+    if str1 == "show":
+        if str2:
+            ruleid = None
+            try:
+                ruleid = int(str2)
+            except ValueError:
+                print("Please provide a valid identifier.")
+            rules.show_rule(ruleid)
+        else:
+            repl.error("Please provide a valid identifier.")
+            repl.info(help_str)
+    elif str1 == "rm":
+        if str2:
+            ruleid = None
+            try:
+                ruleid = int(str2)
+            except ValueError:
+                print("Please provide a valid identifier.")
+            rules.rm_rule(ruleid)
+        else:
+            repl.error("Please provide a valid identifier.")
+            repl.info(help_str)
+    elif str1 == "hide":
+        if str2:
+            ruleid = None
+            try:
+                ruleid = int(str2)
+            except ValueError:
+                print("Please provide a valid identifier.")
+            rules.hide_rule(ruleid)
+        else:
+            repl.error("Please provide a valid identifier.")
+            repl.info(help_str)
+    elif str1 == "unhide":
+        if str2:
+            ruleid = None
+            try:
+                ruleid = int(str2)
+            except ValueError:
+                print("Please provide a valid identifier.")
+            rules.unhide_rule(ruleid)
+        else:
+            repl.error("Please provide a valid identifier.")
+            repl.info(help_str)
+    elif str1 == "list":
+        rules.list_rules(filter=str2)
+    else:
+        repl.error("Unknown rules option.")
+        repl.info(help_str)
+
+@repl.complete("rules")
+def start_completer(text, line, start_index, end_index):
+    if line.startswith("rules list"):
+        if text == "list":
+            return RULES_LIST_SUBCOMMANDS
+        return [
+            subcommand
+            for subcommand in RULES_LIST_SUBCOMMANDS
+            if subcommand.startswith(text)
+        ]
+
+    return [
+        subcommand
+        for subcommand in RULES_SUBCOMMANDS
         if subcommand.startswith(text)
     ]
 

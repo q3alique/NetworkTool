@@ -61,9 +61,10 @@ def list_targets(filter=None):
 def _tabulate_targets(targets):
     headers = ["ID", "Name", "IP range", "Ports"]
     data = [ [target.id, target.name, target.ip_range, target.ports] for target in targets ]
-    cli.repl.print(tabulate(data, headers=headers, tablefmt='grid'))
+    if len(data) > 0:
+        cli.repl.print(tabulate(data, headers=headers, tablefmt='grid'))
 
 def _validate_ports_format(csv_string):
-    # Format must be a CSV that contains values like "<integer>-tcp" or "<integer>-udp" or "<integer>"
-    pattern = r"^(\d+(-tcp|-udp)?)(,\d+(-tcp|-udp)?)*$"
+    # Format must be a CSV that contains values like "<integer>[-<integer>][-tcp|-udp]"
+    pattern = r"^(\d+(-\d+)?(-tcp|-udp)?)(,\d+(-\d+)?(-tcp|-udp)?)*$"
     return bool(re.match(pattern, csv_string))
