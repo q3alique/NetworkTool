@@ -128,12 +128,30 @@ def recon_scan(target=None, silent_mode=False):
 
     flags = f"{scan_option} {timing_option}"
 
+    source_ip=_get_local_ip()
+
+    sourcenetworks = _find_applicable_sourcenetworks(source_ip)
+    if len(sourcenetworks) > 0:
+        cli.print(f"[i] This Scan will be associated to SourceNetworks: {", ".join([sn.name for sn in sourcenetworks])}")
+
+
+    targets = _find_applicable_targets(target)
+    if len(sourcenetworks) > 0:
+        cli.print(f"[i] This Scan will be associated to Targets: {", ".join([target.name for target in targets])}")
+
+    rules = _find_applicable_rules(source_ip, target)
+    if len(rules) > 0:
+        cli.print(f"[i] This Scan will be associated to Rules:\n {"\n ".join([f"- [{rule.id}] {rule.name}" for rule in rules])}")
+
     scan = db.SqlHandler.Scan(
         name="Recon scan",
         nmap_target=target,
         nmap_flags=flags,
         scan_type=SCAN_TYPE_RECON,
-        source_ip=_get_local_ip()
+        source_ip=source_ip,
+        sourcenetworks=sourcenetworks,
+        targets=targets,
+        rules=rules
     )
 
     scanid = db.sqlhandler.insert(scan)
@@ -322,7 +340,7 @@ def list_scans(filter=None):
         _tabulate_scans(scans)
 
 def _tabulate_scans(scans):
-    headers = ["ID", "Type", "Name", "Source", "Target", "Flags", "Status", "Percent."]
+    headers = ["ID", "Type", "Name", "Source", "Nmap Target", "Nmap Flags", "Percent.", "Status", "SourceNetworks", "Targets", "Rules (ID)"]
     data = []
     for scan in scans:
         status = scan.status
@@ -330,7 +348,28 @@ def _tabulate_scans(scans):
             status = f"{Fore.GREEN}{status}{Style.RESET_ALL}"
         elif status == db.SqlHandler.Scan.STATUS_FAILED:
             status = f"{Fore.RED}{status}{Style.RESET_ALL}"
-        data.append([scan.id, scan.scan_type, scan.name, scan.source_ip, scan.nmap_target, scan.nmap_flags, status, scan.percentage])
+
+        sourcenetworks = []
+        if len(scan.sourcenetworks) > 0:
+            for sn in scan.sourcenetworks:
+                sourcenetworks.append(sn.name)
+
+        targets = []
+        if len(scan.targets) > 0:
+            for target in scan.targets:
+                targets.append(target.name)
+
+        ruleids = []
+        if len(scan.rules) > 0:
+            for rule in scan.rules:
+                ruleids.append(str(rule.id))
+
+        data.append([scan.id, scan.scan_type, scan.name, scan.source_ip,
+                      scan.nmap_target, scan.nmap_flags,
+                      scan.percentage, status,
+                      ", ".join(sourcenetworks),
+                      ", ".join(targets),
+                      ", ".join(ruleids)])
     cli.repl.print(tabulate(data, headers=headers, tablefmt='grid'))
 
 def print_scan(scanid):
@@ -603,3 +642,41 @@ def _save_output(report_content, file_path):
         _save_output_json(report_content, file_path)
     else:
         print(f"{Fore.RED}Unsupported file format: {extension}{Style.RESET_ALL}")
+
+def _find_applicable_sourcenetworks(source_ip):
+    """Obtain every SourceNetwork that matches the provided source IP."""
+    ip_addr = ipaddress.ip_address(source_ip)
+    with db.sqlhandler.Session() as sess:
+        sns = sess.query(db.SqlHandler.SourceNetwork).all()
+        return [sn for sn in sns if ip_addr in ipaddress.ip_network(sn.ip_range)]
+
+def _find_applicable_targets(target_range):
+    """Obtain every Target that matches the provided target range."""
+    ip_range = ipaddress.ip_network(target_range)
+    with db.sqlhandler.Session() as sess:
+        targets = sess.query(db.SqlHandler.Target).all()
+        return [target for target in targets if ip_range.overlaps(ipaddress.ip_network(target.ip_range))]
+
+def _find_applicable_rules(source_ip, target_range):
+    """Obtain every Rule that matches the provided source IP and target range."""
+    source_ip_addr = ipaddress.ip_address(source_ip)
+    target_ip_range = ipaddress.ip_network(target_range)
+    with db.sqlhandler.Session() as sess:
+        rules = sess.query(db.SqlHandler.Rule).all()
+        results = []
+        for rule in rules:
+            src_matches = False
+            dst_matches = False
+            rule_src_addr_ips = rule.src_addr_ips.split(";")
+            for rule_src_addr_ip in rule_src_addr_ips:
+                if source_ip_addr in ipaddress.ip_network(rule_src_addr_ip):
+                    src_matches = True
+                    continue
+            rule_dst_addr_ips = rule.dst_addr_ips.split(";")
+            for rule_dst_addr_ip in rule_dst_addr_ips:
+                if target_ip_range.overlaps(ipaddress.ip_network(rule_dst_addr_ip)):
+                    dst_matches = True
+                    continue
+            if src_matches and dst_matches:
+                results.append(rule)
+        return results

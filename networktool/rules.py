@@ -37,8 +37,15 @@ def list_rules(filter=None):
             rules = sess.query(db.SqlHandler.Rule).filter(db.SqlHandler.Rule.hidden == True).order_by(db.SqlHandler.Rule.id).all()
         elif filter == "all":
             rules = sess.query(db.SqlHandler.Rule).order_by(db.SqlHandler.Rule.id).all()
-        if re.match(r'^[1-9]\d*(,[1-9]\d*)*$', filter):
-            rules = sess.query(db.SqlHandler.Rule).filter(db.SqlHandler.Rule.id.in_(filter.split(","))).order_by(db.SqlHandler.Rule.id).all()
+        if re.match(r'^(?:[1-9]\d*|[1-9]\d*-[1-9]\d*)(,(?:[1-9]\d*|[1-9]\d*-[1-9]\d*))*$', filter): # Comma-separated positive integers and ranges
+            ids = []
+            for id_range in filter.split(","):
+                if "-" in id_range:
+                    start, end = map(int, id_range.split('-'))
+                    ids.extend(range(start, end + 1))
+                else:
+                    ids.append(id_range)
+            rules = sess.query(db.SqlHandler.Rule).filter(db.SqlHandler.Rule.id.in_(ids)).order_by(db.SqlHandler.Rule.id).all()
         else:
             rules = sess.query(db.SqlHandler.Rule).filter(db.SqlHandler.Rule.hidden == False).order_by(db.SqlHandler.Rule.id).all()
         _tabulate_rules(rules)

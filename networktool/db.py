@@ -96,13 +96,17 @@ class SqlHandler:
         reports: Mapped[List["Report"]] = relationship(
             secondary=scans_reports_table, back_populates="scans")
 
-        def __init__(self, name, nmap_target, nmap_flags, scan_type, source_ip):
+        def __init__(self, name, nmap_target, nmap_flags, scan_type, source_ip,
+                      sourcenetworks=[], targets=[], rules=[]):
             self.name = name
             self.nmap_target = nmap_target
             self.nmap_flags = nmap_flags
             self.scan_type = scan_type
             self.source_ip = source_ip
             self.status = self.STATUS_READY
+            self.sourcenetworks = sourcenetworks
+            self.targets = targets
+            self.rules = rules
     
     class SourceNetwork(Base):
         """
