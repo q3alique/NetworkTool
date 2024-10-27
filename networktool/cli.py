@@ -42,13 +42,9 @@ def scans_command(str1: str, str2: str = None, str3 = None, str4 = None, str5 = 
             scans.recon_scan(target)
         elif str2 == "serviceid":
             if str3 == "fromscanid":
-                scanid = None
-                try:
-                    scanid = int(str4)
-                except ValueError:
-                    print("Please provide a valid identifier.")
-                    return
-                scans.serviceid_scan(scanid=scanid)
+                scanid = parse_int(str4)
+                if scanid:
+                    scans.serviceid_scan(scanid=scanid)
             else:
                 ports = str4
                 scans.serviceid_scan(target, ports)
@@ -64,58 +60,26 @@ def scans_command(str1: str, str2: str = None, str3 = None, str4 = None, str5 = 
             repl.error("Unknown scan type.")
             repl.info(help_str)
     elif str1 == "kill":
-        if str2:
-            scanid = None
-            try:
-                scanid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
-                return
+        scanid = parse_int(str2)
+        if scanid:
             scans.kill_scan(scanid)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     elif str1 == "rm":
-        if str2:
-            scanid = None
-            try:
-                scanid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
-                return
+        scanid = parse_int(str2)
+        if scanid:
             scans.rm_scan(scanid)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     elif str1 == "list":
         scans.list_scans(filter=str2)
     elif str1 == "show":
-        if str2:
-            scanid = None
-            try:
-                scanid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
-                return
+        scanid = parse_int(str2)
+        if scanid:
             scans.print_scan(scanid)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     elif str1 == "clean":
         scans.clean_scans()
     elif str1 == "export":
-        if str2:
-            scanid = None
-            try:
-                scanid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
-                return
+        scanid = parse_int(str2)
+        if scanid:
             output_file = str3
             scans.export_scan(scanid, output_file)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     else:
         repl.error("Unknown scan option.")
         repl.info(help_str)
@@ -148,16 +112,9 @@ def sourcenetworks_command(str1: str, str2: str = None, str3 = None):
         else:
             repl.info(help_add_str)
     elif str1 == "rm":
-        if str2:
-            snid = None
-            try:
-                snid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
+        snid = parse_int(str2)
+        if snid:
             sourcenetworks.rm_sourcenetwork(snid)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     elif str1 == "list":
         sourcenetworks.list_sourcenetworks()
     else:
@@ -183,16 +140,9 @@ def targets_command(str1: str, str2: str = None, str3 = None, str4 = None):
         else:
             repl.info(help_add_str)
     elif str1 == "rm":
-        if str2:
-            targetid = None
-            try:
-                targetid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
+        targetid = parse_int(str2)
+        if targetid:
             targets.rm_target(targetid)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     elif str1 == "list":
         targets.list_targets()
     else:
@@ -212,49 +162,21 @@ def rules_command(str1: str, str2: str = None, str3 = None, str4 = None):
     help_str = f"Usage: rules {"/".join(RULES_SUBCOMMANDS)}. Execute 'help <command> <subcommand>' for additional details."
 
     if str1 == "show":
-        if str2:
-            ruleid = None
-            try:
-                ruleid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
+        ruleid = parse_int(str2)
+        if ruleid:
             rules.show_rule(ruleid)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     elif str1 == "rm":
-        if str2:
-            ruleid = None
-            try:
-                ruleid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
+        ruleid = parse_int(str2)
+        if ruleid:
             rules.rm_rule(ruleid)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     elif str1 == "hide":
-        if str2:
-            ruleid = None
-            try:
-                ruleid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
+        ruleid = parse_int(str2)
+        if ruleid:
             rules.hide_rule(ruleid)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     elif str1 == "unhide":
-        if str2:
-            ruleid = None
-            try:
-                ruleid = int(str2)
-            except ValueError:
-                print("Please provide a valid identifier.")
+        ruleid = parse_int(str2)
+        if ruleid:
             rules.unhide_rule(ruleid)
-        else:
-            repl.error("Please provide a valid identifier.")
-            repl.info(help_str)
     elif str1 == "list":
         rules.list_rules(filter=str2)
     else:
@@ -277,6 +199,13 @@ def start_completer(text, line, start_index, end_index):
         for subcommand in RULES_SUBCOMMANDS
         if subcommand.startswith(text)
     ]
+
+def parse_int(value, error_msg="Please provide a valid identifier."):
+    try:
+        return int(value)
+    except ValueError:
+        print(error_msg)
+    return None
 
 def print(msg):
     repl.print(msg)
