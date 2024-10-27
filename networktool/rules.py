@@ -28,7 +28,7 @@ def rm_rule(ruleid):
           
         sess.delete(rule)
         sess.commit()
-        cli.print_success(f"Rule successfully removed from DB. [ID: {ruleid}]")
+        cli.print_success(f"[+] Rule successfully removed from DB. [ID: {ruleid}]")
 
 
 def list_rules(filter=None):
@@ -37,7 +37,7 @@ def list_rules(filter=None):
             rules = sess.query(db.SqlHandler.Rule).filter(db.SqlHandler.Rule.hidden == True).order_by(db.SqlHandler.Rule.id).all()
         elif filter == "all":
             rules = sess.query(db.SqlHandler.Rule).order_by(db.SqlHandler.Rule.id).all()
-        if re.match(r'^(?:[1-9]\d*|[1-9]\d*-[1-9]\d*)(,(?:[1-9]\d*|[1-9]\d*-[1-9]\d*))*$', filter): # Comma-separated positive integers and ranges
+        elif filter and re.match(r'^(?:[1-9]\d*|[1-9]\d*-[1-9]\d*)(,(?:[1-9]\d*|[1-9]\d*-[1-9]\d*))*$', filter): # Comma-separated positive integers and ranges
             ids = []
             for id_range in filter.split(","):
                 if "-" in id_range:

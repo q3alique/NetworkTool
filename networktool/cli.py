@@ -33,7 +33,7 @@ def help():
     repl.info(f"Available commands: {"/".join(COMMANDS)}. Execute 'help <command> (<subcommand>)' for additional details.")
 
 @repl.command("scans", description="Execute scans per category.")
-def scans_command(str1: str, str2: str = None, str3 = None, str4 = None):
+def scans_command(str1: str, str2: str = None, str3 = None, str4 = None, str5 = None):
     help_str = f"Usage: scans {"/".join(SCANS_SUBCOMMANDS)}. Execute 'help <command> <subcommand>' for additional details." 
 
     if str1 == "new":
@@ -41,17 +41,25 @@ def scans_command(str1: str, str2: str = None, str3 = None, str4 = None):
         if str2 == "recon":
             scans.recon_scan(target)
         elif str2 == "serviceid":
-            #ports = str4
-            #TODO: scans.service_id(target, ports)
-            pass
+            if str3 == "fromscanid":
+                scanid = None
+                try:
+                    scanid = int(str4)
+                except ValueError:
+                    print("Please provide a valid identifier.")
+                    return
+                scans.serviceid_scan(scanid=scanid)
+            else:
+                ports = str4
+                scans.serviceid_scan(target, ports)
         elif str2 == "segmentation-check":
             scans.segmentation_check_scan(target)
         elif str2 == "generic":
             ports = str4
-            #TODO: port format validation
             scans.generic_scan(target, ports)
         elif str2 == "custom-nmap":
-            scans.nmap_custom_scan(target)
+            flags = str4
+            scans.nmap_custom_scan(target, flags)
         else:
             repl.error("Unknown scan type.")
             repl.info(help_str)
@@ -62,6 +70,7 @@ def scans_command(str1: str, str2: str = None, str3 = None, str4 = None):
                 scanid = int(str2)
             except ValueError:
                 print("Please provide a valid identifier.")
+                return
             scans.kill_scan(scanid)
         else:
             repl.error("Please provide a valid identifier.")
@@ -73,19 +82,13 @@ def scans_command(str1: str, str2: str = None, str3 = None, str4 = None):
                 scanid = int(str2)
             except ValueError:
                 print("Please provide a valid identifier.")
+                return
             scans.rm_scan(scanid)
         else:
             repl.error("Please provide a valid identifier.")
             repl.info(help_str)
     elif str1 == "list":
-        if not str2:
-            scans.list_scans()
-        elif str2 == "done" or str2 == "running":
-            filter = str2
-            scans.list_scans(filter)
-        else:
-            repl.error("Unknown scan type.")
-            repl.info(help_str)
+        scans.list_scans(filter=str2)
     elif str1 == "show":
         if str2:
             scanid = None
@@ -93,6 +96,7 @@ def scans_command(str1: str, str2: str = None, str3 = None, str4 = None):
                 scanid = int(str2)
             except ValueError:
                 print("Please provide a valid identifier.")
+                return
             scans.print_scan(scanid)
         else:
             repl.error("Please provide a valid identifier.")
@@ -106,6 +110,7 @@ def scans_command(str1: str, str2: str = None, str3 = None, str4 = None):
                 scanid = int(str2)
             except ValueError:
                 print("Please provide a valid identifier.")
+                return
             output_file = str3
             scans.export_scan(scanid, output_file)
         else:
@@ -284,3 +289,6 @@ def print_error(msg):
 
 def print_warn(msg):
     repl.print(Palette.YELLOW.format(msg))
+
+def print_info(msg):
+    repl.print(Palette.CYAN.format(msg))

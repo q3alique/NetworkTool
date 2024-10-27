@@ -273,14 +273,3 @@ class SqlHandler:
             raise ValueError
         sess = self.Session()
         return sess.query(obj_type).order_by(orderby)
-
-    def delete(self, obj_type, obj_id=None):
-        if obj_type is None or obj_id is None:
-            raise ValueError
-        nb_line = 0
-        sess = self.Session()
-        rpt = sess.query(obj_type).filter_by(id=obj_id)
-        nb_line = rpt.delete()
-        sess.commit()
-        sess.close()
-        return nb_line

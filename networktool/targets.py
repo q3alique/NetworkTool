@@ -6,7 +6,7 @@ import re
 import cli
 from tabulate import tabulate
 
-import db
+import db, utils
 
 def add_target(ip_range, ports, name):
     fmt_iprange = ""
@@ -16,7 +16,7 @@ def add_target(ip_range, ports, name):
         cli.print_error(f"[!] The provided IP range string is not a valid network representation!")
         return
     
-    if not _validate_ports_format(ports):
+    if not utils.validate_ports_format(ports):
         cli.print_error(f"[!] The ports must be specified as CSV with values \"<port>-tcp\" / \"<port>-udp\" / \"<port>\" (TCP will be considered if not indicated).")
         return
 
@@ -63,8 +63,3 @@ def _tabulate_targets(targets):
     data = [ [target.id, target.name, target.ip_range, target.ports] for target in targets ]
     if len(data) > 0:
         cli.repl.print(tabulate(data, headers=headers, tablefmt='grid'))
-
-def _validate_ports_format(csv_string):
-    # Format must be a CSV that contains values like "<integer>[-<integer>][-tcp|-udp]"
-    pattern = r"^(\d+(-\d+)?(-tcp|-udp)?)(,\d+(-\d+)?(-tcp|-udp)?)*$"
-    return bool(re.match(pattern, csv_string))

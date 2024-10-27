@@ -6,19 +6,22 @@ from libnmap.process import NmapProcess
 from libnmap.parser import NmapParser, NmapParserException
 from tabulate import tabulate
 from sqlalchemy.sql import and_
+import json
+import re
 
 from colorama import init, Fore, Style
 
 import db
 import cli
-import json
+import utils
 
 # Dictionary that stores the scan IDs corresponding to the running NmapProcs
 nmapproc_scanid = {}
 
 SCAN_TYPE_RECON = "Recon"
-SCAN_TYPE_SEGMENTATION = "Segmentation"
 SCAN_TYPE_GENERIC = "Generic"
+SCAN_TYPE_SERVICEID = "ServiceID"
+SCAN_TYPE_SEGMENTATION = "Segmentation"
 SCAN_TYPE_CUSTOM_NMAP = "CustomNmap"
 
 # Nmap scan options for Recon scan
@@ -50,6 +53,7 @@ nmap_generic_options = {
     5: {"name": "OS Detection", "option": "-O", "description": "Enable OS detection."},
     6: {"name": "Aggressive Scan", "option": "-A", "description": "Enable OS detection, version detection, script scanning, and traceroute."},
     7: {"name": "Ping Scan", "option": "-sn", "description": "Discover online hosts without scanning ports."},
+    8: {"name": "UDP Scan + Fast Version Detection", "option": "-sUV -F --version-intensity 0", "description": "Perform UDP scan (fast)."},
 }
 
 # Valid status are taken from the libnmap library
@@ -63,8 +67,8 @@ SCAN_STATUS = [
 
 def _scan_callback(nmap_proc):
     if nmap_proc not in nmapproc_scanid:
-        cli.print_error(f"\n[+] NmapProc not found in association dictionary, something went wrong")
-        cli.print_error(f"\n[+] Cancelling scan...")
+        cli.print_error(f"\n[!] NmapProc not found in association dictionary, something went wrong")
+        cli.print_error(f"\n[!] Cancelling scan...")
         nmap_proc.stop()
         return
 
@@ -75,8 +79,8 @@ def _scan_callback(nmap_proc):
     sess = db.sqlhandler.Session()
     scan = sess.query(db.SqlHandler.Scan).get(scanid)
     if not scan:
-        cli.print_error(f"\n[+] No scan found in DB with the given ID [ID: {scanid}]")
-        cli.print_error(f"\n[+] Cancelling scan...")
+        cli.print_error(f"\n[!] No scan found in DB with the given ID [ID: {scanid}]")
+        cli.print_error(f"\n[!] Cancelling scan...")
         nmap_proc.stop()
         del nmapproc_scanid[nmap_proc]
         sess.close()
@@ -87,14 +91,14 @@ def _scan_callback(nmap_proc):
     scan.percentage = nmap_proc.progress
 
     if scan.status == db.SqlHandler.Scan.STATUS_FAILED:
-        cli.print_error(f"\n[+] Scan failed! [ID: {scanid}]")
-        cli.print_error(nmap_proc.stderr)
+        cli.print_error(f"\n[!] Scan failed! [ID: {scanid}]")
+        cli.print_error("Nmap stderr: " + nmap_proc.stderr)
         del nmapproc_scanid[nmap_proc]
-    if scan.status == db.SqlHandler.Scan.STATUS_CANCELLED:
-        cli.print_error(f"\n[+] Scan was cancelled [ID: {scanid}]")
+    elif scan.status == db.SqlHandler.Scan.STATUS_CANCELLED:
+        cli.print_error(f"\n[!] Scan was cancelled [ID: {scanid}]")
         del nmapproc_scanid[nmap_proc]
     elif scan.status == db.SqlHandler.Scan.STATUS_DONE:
-        cli.print_success(f"\n[+] Scan finished! [ID: {scanid}]")
+        cli.print_success(f"\n[!] Scan finished! [ID: {scanid}]")
         del nmapproc_scanid[nmap_proc]
         parsed = None
         try:
@@ -128,59 +132,9 @@ def recon_scan(target=None, silent_mode=False):
 
     flags = f"{scan_option} {timing_option}"
 
-    source_ip=_get_local_ip()
-
-    sourcenetworks = _find_applicable_sourcenetworks(source_ip)
-    if len(sourcenetworks) > 0:
-        cli.print(f"[i] This Scan will be associated to SourceNetworks: {", ".join([sn.name for sn in sourcenetworks])}")
-
-
-    targets = _find_applicable_targets(target)
-    if len(sourcenetworks) > 0:
-        cli.print(f"[i] This Scan will be associated to Targets: {", ".join([target.name for target in targets])}")
-
-    rules = _find_applicable_rules(source_ip, target)
-    if len(rules) > 0:
-        cli.print(f"[i] This Scan will be associated to Rules:\n {"\n ".join([f"- [{rule.id}] {rule.name}" for rule in rules])}")
-
-    scan = db.SqlHandler.Scan(
-        name="Recon scan",
-        nmap_target=target,
-        nmap_flags=flags,
-        scan_type=SCAN_TYPE_RECON,
-        source_ip=source_ip,
-        sourcenetworks=sourcenetworks,
-        targets=targets,
-        rules=rules
-    )
-
-    scanid = db.sqlhandler.insert(scan)
+    scanid = _store_scan(target, flags, SCAN_TYPE_RECON)
 
     print(f"{Fore.MAGENTA}Performing {scan_option} on {target}{Style.RESET_ALL} [ID: {scanid}]")
-    nmap_proc = NmapProcess(targets=target, options=flags, event_callback=_scan_callback)
-    nmapproc_scanid[nmap_proc] = scanid
-    nmap_proc.sudo_run_background()
-
-# Segmentation Check scan
-def segmentation_check_scan(target, silent_mode=False):
-    """Performs the Segmentation Check scans based on the user's selection."""
-    
-    timing_option = "-T2" if silent_mode else ""
-    scan_option = _display_segmentation_menu()
-
-    flags = f"{scan_option} {timing_option}"
-
-    scan = db.SqlHandler.Scan(
-        name="Segmentation check scan",
-        nmap_target=target,
-        nmap_flags=flags,
-        scan_type=SCAN_TYPE_SEGMENTATION,
-        source_ip=_get_local_ip()
-    )
-
-    scanid = db.sqlhandler.insert(scan)
-
-    print(f"{Fore.MAGENTA}Starting Segmentation Check Scan on target: {target}{Style.RESET_ALL} [ID: {scanid}]")
     nmap_proc = NmapProcess(targets=target, options=flags, event_callback=_scan_callback)
     nmapproc_scanid[nmap_proc] = scanid
     nmap_proc.sudo_run_background()
@@ -202,15 +156,7 @@ def generic_scan(target, ports, ping_off=True, silent_mode=False):
 
     flags = f"{scan_option} {port_option} {ping_option} {timing_option}".strip()
 
-    scan = db.SqlHandler.Scan(
-        name="Generic scan",
-        nmap_target=target,
-        nmap_flags=flags,
-        scan_type=SCAN_TYPE_GENERIC,
-        source_ip=_get_local_ip()
-    )
-
-    scanid = db.sqlhandler.insert(scan)
+    scanid = _store_scan(target, flags, SCAN_TYPE_GENERIC)
 
     print(f"{Fore.CYAN}Performing scan with option: {scan_option}{Style.RESET_ALL} [ID: {scanid}]")
 
@@ -218,21 +164,137 @@ def generic_scan(target, ports, ping_off=True, silent_mode=False):
     nmapproc_scanid[nmap_proc] = scanid
     nmap_proc.sudo_run_background()
 
-# Nmap custom scan using full nmap flags
-def nmap_custom_scan(nmap_flags):
-    """Perform custom Nmap scans using full nmap flags."""
-
-    scan = db.SqlHandler.Scan(
-        name="Custom nmap scan",
-        nmap_target="custom",
-        nmap_flags=nmap_flags,
-        scan_type=SCAN_TYPE_CUSTOM_NMAP,
-        source_ip=_get_local_ip()
-    )
-
-    scanid = db.sqlhandler.insert(scan)
+# ServiceID scan
+def serviceid_scan(target=None, ports=None, scanid=None, silent_mode=False):
+    """Performs the Service ID scans based on the provided ports or previous scan."""
+   
+    if (not target or not ports) and not scanid:
+        cli.print_error("[!] Either the destination target and ports, or a previous Scan identifier need to be provided.")
+        return
     
-    print(f"{Fore.MAGENTA}Starting Custom Nmap Scan with flags: {nmap_flags}{Style.RESET_ALL} [ID: {scanid}]")
+    scan_option = None
+    nmap_ports_list = []
+
+    found_tcp = False
+    found_udp = False
+
+    # Array of arrays, containing entries in the form [target, ports]
+    target__nmap_ports_list = []
+
+    if target and ports:
+        if not utils.validate_ports_format(ports):
+            cli.print_error(f"[!] The ports must be specified as CSV with values \"<port>-tcp\" / \"<port>-udp\" / \"<port>\" (TCP will be considered if not indicated).")
+            return
+        
+        for port in ports.split(","):
+            if "-udp" in port:
+                found_udp = True
+            elif "-tcp" in port:
+                found_tcp = True
+            else:
+                found_tcp = True
+            port = port.strip("-tcp").strip("-udp")
+            nmap_ports_list.append(port)
+        
+        target__nmap_ports_list.append([target, nmap_ports_list])      
+    elif scanid:
+        with db.sqlhandler.Session() as sess:
+            scan = sess.query(db.SqlHandler.Scan).get(scanid)
+            if not scan:
+                cli.print_error(f"No Scan with this identifier. Status: {scan.status}")
+                return
+            if len(scan.reports) == 0:
+                cli.print_error(f"Scan has no Report. Status: {scan.status}")
+                return
+        
+            report = scan.reports[0].decode()
+            _tabulate_host_services(report.hosts)
+            cli.print_info("[i] Please select one of the hosts to base the service identification scan on. Introduce \"A\" to launch one Scan for every host.")
+            choice = input()
+            if choice == "A":
+                found_tcp, found_udp = _parse_host_find_tcp_udp(report.hosts)
+                for host in report.hosts:
+                    target__nmap_ports_list.append(_parse_host_services(host))
+            else:
+                try:
+                    pos = int(choice)
+                except ValueError:
+                    cli.print_error(f"Please enter a valid number.")
+                if pos < len(report.hosts):
+                    host = report.hosts[pos]
+                    found_tcp, found_udp = _parse_host_find_tcp_udp([host])
+                    target__nmap_ports_list.append(_parse_host_services(host))
+                        
+    if found_tcp and found_udp:
+        scan_option = "-sSU"
+    elif found_tcp:
+        scan_option = "-sS"
+    elif found_udp:
+        scan_option = "-sU"
+
+    scan_option += " -sV --version-intensity 9"
+    
+    for scan in target__nmap_ports_list:
+        _serviceid_scan_run_single(scan[0], scan[1], scan_option, silent_mode)
+
+def _serviceid_scan_run_single(target, nmap_ports_list, scan_option, silent_mode=False):
+    timing_option = "-T2" if silent_mode else ""
+    print(nmap_ports_list)
+    flags = f"{scan_option} -p{",".join(nmap_ports_list)} {timing_option}"
+
+    scanid = _store_scan(target, flags, SCAN_TYPE_SERVICEID)
+
+    print(f"{Fore.MAGENTA}Performing {scan_option} on {target}{Style.RESET_ALL} [ID: {scanid}]")
+    nmap_proc = NmapProcess(targets=target, options=flags, event_callback=_scan_callback)
+    nmapproc_scanid[nmap_proc] = scanid
+    nmap_proc.sudo_run_background()
+
+def _parse_host_services(host):
+    nmap_ports_list = []
+    for service in host.services:
+        if (service.protocol == "tcp" and service.state == "open"):
+            nmap_ports_list.append(str(service.port))
+        elif (service.protocol == "udp" and service.state in ["open", "open|filtered"]):
+            nmap_ports_list.append(str(service.port))
+    return host.address, nmap_ports_list
+
+def _parse_host_find_tcp_udp(hosts):
+    found_tcp = False
+    found_udp = False
+    for host in hosts:
+        for service in host.services:
+            if (service.protocol == "tcp" and service.state == "open"):
+                found_tcp = True
+            elif (service.protocol == "udp" and service.state in ["open", "open|filtered"]):
+                found_udp = True
+    return found_tcp, found_udp
+
+# Segmentation Check scan
+def segmentation_check_scan(target, silent_mode=False):
+    """Performs the Segmentation Check scans based on the user's selection."""
+    
+    timing_option = "-T2" if silent_mode else ""
+    scan_option = _display_segmentation_menu()
+
+    flags = f"{scan_option} {timing_option}"
+
+    scanid = _store_scan(target, flags, SCAN_TYPE_SEGMENTATION)
+
+    print(f"{Fore.MAGENTA}Starting Segmentation Check Scan on target: {target}{Style.RESET_ALL} [ID: {scanid}]")
+    nmap_proc = NmapProcess(targets=target, options=flags, event_callback=_scan_callback)
+    nmapproc_scanid[nmap_proc] = scanid
+    nmap_proc.sudo_run_background()
+
+# Nmap custom scan using full nmap flags
+def nmap_custom_scan(nmap_target, nmap_flags):
+    """Perform custom Nmap scans using full nmap flags."""
+    if not nmap_target or not nmap_flags:
+        print(f"{Fore.RED}Error: Nmap target and flags are required for the Generic scan.{Style.RESET_ALL}")
+        return
+    
+    scanid = _store_scan(nmap_target, nmap_flags, SCAN_TYPE_CUSTOM_NMAP)
+    
+    print(f"{Fore.MAGENTA}Starting Custom Nmap Scan with target \"{nmap_target}\" and flags: {nmap_flags}{Style.RESET_ALL} [ID: {scanid}]")
 
     nmap_proc = NmapProcess(options=nmap_flags, event_callback=_scan_callback)
     nmapproc_scanid[nmap_proc] = scanid
@@ -254,8 +316,10 @@ def kill_scan(scanid):
             return
 
         _tabulate_scans([scan])
+
+        cli.print_warn(f"Are you sure you want to kill this scan? [N/y]")
         
-        choice = input(f"\n{Fore.YELLOW}Are you sure you want to kill this scan? [N/y]{Style.RESET_ALL}")
+        choice = input()
         if choice != "y":
             return
     
@@ -286,15 +350,25 @@ def clean_scans():
         return False
 
     with db.sqlhandler.Session() as sess:
-        deleted = sess.query(db.SqlHandler.Scan).filter(and_(db.SqlHandler.Scan.status != db.SqlHandler.Scan.STATUS_DONE, db.SqlHandler.Scan.status != db.SqlHandler.Scan.STATUS_RUNNING)).delete()
-        cli.print_warn(f"[i] {deleted} scans have been deleted.")
+        scans_to_delete = sess.query(db.SqlHandler.Scan).filter(and_(db.SqlHandler.Scan.status != db.SqlHandler.Scan.STATUS_DONE, db.SqlHandler.Scan.status != db.SqlHandler.Scan.STATUS_RUNNING))
+        deleted = 0
+        for scan in scans_to_delete:
+            sess.delete(scan)
+            deleted += 1
+        cli.print_info(f"[i] {deleted} scans have been deleted.")
         sess.commit()
 
 def clean_running_scans():
+    """Delete every running scan. Meant to be called on new runs of the tool, to clean up previously running scans that did not exit gracefully."""
     with db.sqlhandler.Session() as sess:
-        deleted = sess.query(db.SqlHandler.Scan).filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_RUNNING).delete()
+        running_scans = sess.query(db.SqlHandler.Scan).filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_RUNNING)
+        _tabulate_scans(running_scans)
+        deleted = 0
+        for scan in running_scans:
+            sess.delete(scan)
+            deleted += 1
         if deleted > 0:
-            cli.print_warn(f"[i] {deleted} scans with Running status have been deleted (these probably belonged to previous runs of the tool that did not finalize correctly).")
+            cli.print_info(f"[i] The previous {deleted} scans with Running status have been deleted (they probably belonged to previous runs of the tool that did not finalize correctly).")
         sess.commit()
 
 def rm_scan(scanid):
@@ -315,7 +389,7 @@ def rm_scan(scanid):
             return
 
         if len(scan.reports) > 0:
-            cli.print_warn("[i] This scan has an associated report.")
+            cli.print_warn("[w] This scan has an associated report.")
 
         cli.print_warn("Are you sure you want to remove this scan (and associated reports)? [N/y] ")
         choice = input()
@@ -323,24 +397,66 @@ def rm_scan(scanid):
             return
     
         for report in scan.reports:
-            sess.delete(report)        
+            sess.delete(report)
         sess.delete(scan)
         sess.commit()
         cli.print_success(f"Scan successfully removed from DB. [ID: {scanid}]")
 
 def list_scans(filter=None):
     with db.sqlhandler.Session() as sess:
-        scans = sess.query(db.SqlHandler.Scan).order_by(db.SqlHandler.Scan.inserted)
+        scans = sess.query(db.SqlHandler.Scan)
     
         if filter == "running":
             scans = scans.filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_RUNNING)
         elif filter == "done":
             scans = scans.filter(db.SqlHandler.Scan.status == db.SqlHandler.Scan.STATUS_DONE)
+        elif filter and re.match(r'^(?:[1-9]\d*|[1-9]\d*-[1-9]\d*)(,(?:[1-9]\d*|[1-9]\d*-[1-9]\d*))*$', filter): # Comma-separated positive integers and ranges
+            ids = []
+            for id_range in filter.split(","):
+                if "-" in id_range:
+                    start, end = map(int, id_range.split('-'))
+                    ids.extend(range(start, end + 1))
+                else:
+                    ids.append(id_range)
+            scans = scans.filter(db.SqlHandler.Scan.id.in_(ids)).order_by(db.SqlHandler.Scan.id).all()
+        else:
+            scans = scans.all()
 
         _tabulate_scans(scans)
 
+def _store_scan(nmap_target, nmap_flags, scan_type):
+    source_ip=_get_local_ip()
+
+    sourcenetworks = _find_applicable_sourcenetworks(source_ip)
+    if len(sourcenetworks) > 0:
+        cli.print_info(f"[i] This Scan will be associated to SourceNetworks: {", ".join([sn.name for sn in sourcenetworks])}")
+
+
+    targets = _find_applicable_targets(nmap_target)
+    if len(sourcenetworks) > 0:
+        cli.print_info(f"[i] This Scan will be associated to Targets: {", ".join([target.name for target in targets])}")
+
+    rules = _find_applicable_rules(source_ip, nmap_target)
+    if len(rules) > 0:
+        cli.print_info(f"[i] This Scan will be associated to Rules:\n {"\n ".join([f"- [{rule.id}] {rule.name}" for rule in rules])}")
+
+    name = f"[{scan_type}] {source_ip} -> {nmap_target} ({nmap_flags.strip()})"
+
+    scan = db.SqlHandler.Scan(
+        name=name,
+        nmap_target=nmap_target,
+        nmap_flags=nmap_flags,
+        scan_type=scan_type,
+        source_ip=source_ip,
+        sourcenetworks=sourcenetworks,
+        targets=targets,
+        rules=rules
+    )
+
+    return db.sqlhandler.insert(scan)
+
 def _tabulate_scans(scans):
-    headers = ["ID", "Type", "Name", "Source", "Nmap Target", "Nmap Flags", "Percent.", "Status", "SourceNetworks", "Targets", "Rules (ID)"]
+    headers = ["ID", "Type", "Source", "Nmap Target", "Nmap Flags", "Percent.", "Status", "SourceNetworks", "Targets", "Rules (ID)"]
     data = []
     for scan in scans:
         status = scan.status
@@ -364,13 +480,28 @@ def _tabulate_scans(scans):
             for rule in scan.rules:
                 ruleids.append(str(rule.id))
 
-        data.append([scan.id, scan.scan_type, scan.name, scan.source_ip,
-                      scan.nmap_target, scan.nmap_flags,
+        data.append([scan.id, scan.scan_type, scan.source_ip,
+                      "\n".join(scan.nmap_target.split(",")),
+                      scan.nmap_flags,
                       scan.percentage, status,
                       ", ".join(sourcenetworks),
                       ", ".join(targets),
                       ", ".join(ruleids)])
-    cli.repl.print(tabulate(data, headers=headers, tablefmt='grid'))
+    if len(data) > 0:
+        cli.repl.print(tabulate(data, headers=headers, tablefmt='grid'))
+
+def _tabulate_host_services(hosts):
+    headers = ["N", "Address", "Hostnames", "Ports"]
+    data = []
+    for i, host in enumerate(hosts):
+        ports = []
+        for service in host.services:
+            if (service.protocol == "tcp" and service.state == "open") or (service.protocol == "udp" and service.state in ["open", "open|filtered"]):
+                ports.append(f"{service.port}-{service.protocol}")
+        data.append([i, host.address, ", ".join(host.hostnames), ", ".join(ports)])
+    if len(data) > 0:
+        cli.repl.print(tabulate(data, headers=headers, tablefmt='grid'))
+
 
 def print_scan(scanid):
     if not scanid:
@@ -398,7 +529,7 @@ def print_scan(scanid):
             for serv in h.services:
                 if serv.state == "open":  # Only show open ports
                     print(f"  {Fore.YELLOW}Port:{Style.RESET_ALL} {serv.port} - {serv.service} ({serv.state})")
-    elif scan_type in [SCAN_TYPE_SEGMENTATION, SCAN_TYPE_GENERIC, SCAN_TYPE_CUSTOM_NMAP]:
+    elif scan_type in [SCAN_TYPE_SEGMENTATION, SCAN_TYPE_GENERIC, SCAN_TYPE_CUSTOM_NMAP, SCAN_TYPE_SERVICEID]:
         for host in report.hosts:
             print(f"{Fore.CYAN}Host:{Style.RESET_ALL} {host.address} ({', '.join(host.hostnames)})")
             print(f"{Fore.CYAN}State:{Style.RESET_ALL} {host.status}")
